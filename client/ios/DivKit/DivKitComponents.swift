@@ -49,6 +49,7 @@ public final class DivKitComponents {
   private let updateCardPipe: SignalPipe<[DivActionURLHandler.UpdateReason]>
   private let variableTracker = DivVariableTracker()
   private let idToPath = IdToPath()
+  private let animatorController = DivAnimatorController()
 
   /// You can create an instance of `DivKitComponents` with various optional parameters that allow
   /// you to customize the behavior and functionality of `DivKit` to suit your specific needs.
@@ -76,6 +77,7 @@ public final class DivKitComponents {
   ///   - showTooltip: Deprecated. This parameter is deprecated, use ``tooltipManager`` instead.
   ///   - stateManagement: An optional ``DivStateManagement`` object responsible for managing card
   /// states.
+  ///   - submitter: An optional ``DivSubmitter`` object responsible for submitting data from container.
   ///   - tooltipManager: An optional `TooltipManager` object that manages the processing and
   /// display of tooltips.
   ///   - trackVisibility: A closure that tracks the visibility of elements. Deprecated. Use
@@ -97,12 +99,12 @@ public final class DivKitComponents {
     fontProvider: DivFontProvider? = nil,
     imageHolderFactory: DivImageHolderFactory? = nil,
     layoutDirection: UserInterfaceLayoutDirection = .leftToRight,
-    submitter: DivSubmitter? = nil,
     patchProvider: DivPatchProvider? = nil,
     requestPerformer: URLRequestPerforming? = nil,
     reporter: DivReporter? = nil,
     showTooltip: DivActionURLHandler.ShowTooltipAction? = nil,
     stateManagement: DivStateManagement = DefaultDivStateManagement(),
+    submitter: DivSubmitter? = nil,
     tooltipManager: TooltipManager? = nil,
     trackVisibility: @escaping DivActionHandler.TrackVisibility = { _, _ in },
     trackDisappear: @escaping DivActionHandler.TrackVisibility = { _, _ in },
@@ -189,7 +191,8 @@ public final class DivKitComponents {
       urlHandler: urlHandler,
       persistentValuesStorage: persistentValuesStorage,
       reporter: reporter,
-      idToPath: idToPath
+      idToPath: idToPath,
+      animatorController: animatorController
     )
 
     triggersStorage = DivTriggersStorage(
@@ -215,10 +218,6 @@ public final class DivKitComponents {
     variablesStorage.changeEvents.addObserver { [weak self] event in
       self?.onVariablesChanged(event: event)
     }.dispose(in: disposePool)
-
-    blockStateStorage.focusUpdates.addObserver { [weak self] cardId in
-      self?.updateCard(.state(cardId))
-    }.dispose(in: disposePool)
   }
 
   public func reset() {
@@ -235,6 +234,7 @@ public final class DivKitComponents {
     timerStorage.reset()
     tooltipManager.reset()
     idToPath.reset()
+    animatorController.reset()
   }
 
   public func reset(cardId: DivCardID) {
@@ -247,6 +247,7 @@ public final class DivKitComponents {
     visibilityCounter.reset(cardId: cardId)
     timerStorage.reset(cardId: cardId)
     idToPath.reset(cardId: cardId)
+    animatorController.reset(cardId: cardId)
   }
 
   /// When using DivView, use DivData.resolve to avoid adding variables twice.
@@ -310,13 +311,18 @@ public final class DivKitComponents {
   ) -> DivBlockModelingContext {
     let viewId = DivViewId(cardId: cardId, additionalId: additionalId)
     variableTracker.onModelingStarted(id: viewId)
+
+    // for now tooltip state management is broken
+    let stateManager = viewId.isTooltip
+      ? DivStateManager()
+      : stateManagement.getStateManagerForCard(cardId: cardId);
+
     return DivBlockModelingContext(
       viewId: viewId,
       cardLogId: nil,
       parentPath: nil,
       parentDivStatePath: nil,
-      stateManager: stateManagement
-        .getStateManagerForCard(cardId: cardId),
+      stateManager: stateManager,
       actionHandler: actionHandler,
       blockStateStorage: blockStateStorage,
       visibilityCounter: visibilityCounter,
@@ -344,7 +350,8 @@ public final class DivKitComponents {
         cardId: cardId
       ),
       layoutProviderHandler: layoutProviderHandler,
-      idToPath: idToPath
+      idToPath: idToPath,
+      animatorController: animatorController
     )
   }
 
